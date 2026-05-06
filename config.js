@@ -3,6 +3,15 @@ const kids = [
   { id: 'samuel', name: 'Samuel', key: '2' },
 ];
 
+// Each task has a name and an icon (emoji)
+const taskLibrary = {
+  'Brush teeth':    { icon: '🪥' },
+  'Feed the dogs':  { icon: '🐕' },
+  'Get into PJs':   { icon: '👕' },
+  'Make bed':       { icon: '🛏️' },
+  'Pack toys away': { icon: '🧸' },
+};
+
 const defaultTasks = [
   'Brush teeth',
   'Feed the dogs',
@@ -28,4 +37,4 @@ function getTasksForToday() {
   return dayOverrides[day] || defaultTasks;
 }
 
-module.exports = { kids, defaultTasks, dayOverrides, rewardTarget, resetHour, getTasksForToday };
+module.exports = { kids, taskLibrary, defaultTasks, dayOverrides, rewardTarget, resetHour, getTasksForToday };

@@ -3,7 +3,7 @@ const { WebSocketServer } = require('ws');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
-const { kids, rewardTarget, resetHour, getTasksForToday } = require('./config');
+const { kids, taskLibrary, rewardTarget, resetHour, getTasksForToday } = require('./config');
 
 const DB_PATH = path.join(__dirname, 'data.json');
 
@@ -36,7 +36,7 @@ function ensureTonightTasks(data) {
     data.tonight = { sessionDate, kids: {} };
     for (const kid of kids) {
       data.tonight.kids[kid.id] = tasks.map(t => ({
-        task: t, done: false, doneAt: null,
+        task: t, icon: (taskLibrary[t] && taskLibrary[t].icon) || '', done: false, doneAt: null,
       }));
     }
     saveData(data);
@@ -67,6 +67,7 @@ function getState() {
       name: kid.name, key: kid.key, totalStars, starsTowardNext,
       rewardTarget, rewardCount: totalRewards,
       wish: data.wishes[kid.id] || '',
+      wishImage: (data.wishImages && data.wishImages[kid.id]) || '',
       tasks: data.tonight.kids[kid.id],
     };
   }
@@ -110,7 +111,7 @@ function broadcast() {
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/api/state', (req, res) => res.json(getState()));
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 app.post('/api/button/:kidId', (req, res) => {
   const taskIndex = (req.body && req.body.taskIndex !== undefined) ? req.body.taskIndex : undefined;
   const result = pressButton(req.params.kidId, taskIndex);
@@ -142,7 +143,11 @@ app.post('/api/wish/:kidId', (req, res) => {
   if (!kid) return res.json({ error: 'Unknown kid' });
   const data = loadData();
   if (!data.wishes) data.wishes = {};
+  if (!data.wishImages) data.wishImages = {};
   data.wishes[kid.id] = (req.body.wish || '').slice(0, 200);
+  if (req.body.wishImage !== undefined) {
+    data.wishImages[kid.id] = req.body.wishImage || '';
+  }
   saveData(data);
   res.json({ ok: true });
   broadcast();

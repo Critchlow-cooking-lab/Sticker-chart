@@ -54,6 +54,22 @@
   .elodie .kid-name { color: #f8a5c2; }
   .samuel .kid-name { color: #7ec8e3; }
 
+  .task-emoji {
+    font-size: 1.1rem;
+  }
+
+  .wish-image-wrap {
+    text-align: center;
+    margin-bottom: 0.5rem;
+  }
+  .wish-image {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 12px;
+    border: 2px solid rgba(255,215,0,0.3);
+  }
+
   .kid-wish {
     font-size: 1rem;
     color: #ccc;
@@ -285,6 +301,7 @@ let rewardDismissable = false;
 
 // Cursor tracks which task is highlighted per kid
 let cursor = {};
+let pendingCursor = {};
 const LONG_PRESS_MS = 1000;
 
 // ============================================================
@@ -299,9 +316,12 @@ function connectWS() {
     if (msg.type === 'state') {
       const oldState = state;
       state = msg.data;
-      // Init cursors to first undone task
+      // Apply pending cursors or init to first undone task
       for (const kidId of Object.keys(state)) {
-        if (cursor[kidId] === undefined) {
+        if (pendingCursor[kidId] !== undefined) {
+          cursor[kidId] = pendingCursor[kidId];
+          delete pendingCursor[kidId];
+        } else if (cursor[kidId] === undefined) {
           cursor[kidId] = firstUndoneIndex(kidId);
         }
       }
@@ -413,13 +433,13 @@ async function markTaskDone(kidId, taskIndex) {
     });
     const data = await res.json();
     if (data.success) {
+      // Pre-calculate next cursor before state updates
+      pendingCursor[kidId] = nextUndoneIndex(kidId, taskIndex);
       const panel = document.querySelector(`.kid-panel.${kidId}`);
       const items = panel?.querySelectorAll('.task-item');
       if (items && items[taskIndex]) {
         createStarBurst(items[taskIndex]);
       }
-      // Move cursor to next undone task
-      cursor[kidId] = nextUndoneIndex(kidId, taskIndex);
     }
   } catch (err) {
     console.error('Button press failed:', err);
@@ -451,7 +471,9 @@ function render(oldState) {
         (!t.done && i === cursorIdx) ? 'current' : '',
       ].filter(Boolean).join(' ');
 
-      const icon = t.done ? '<span style="color:#ffd700">&#9733;</span>' : '';
+      const icon = t.done
+        ? '<span style="color:#ffd700">&#9733;</span>'
+        : (t.icon ? `<span class="task-emoji">${t.icon}</span>` : '');
       tasksHTML += `
         <li class="${classes}">
           <div class="task-icon">${icon}</div>
@@ -462,6 +484,7 @@ function render(oldState) {
     panel.innerHTML = `
       <div class="kid-header">
         <div class="kid-name">${kid.name}</div>
+        ${kid.wishImage ? `<div class="wish-image-wrap"><img class="wish-image" src="${kid.wishImage}" alt="${kid.wish || 'Reward'}"></div>` : ''}
         ${kid.wish ? `<div class="kid-wish">Working toward: ${kid.wish}</div>` : ''}
         <div class="star-summary">
           <span style="color:#ffd700">&#9733;</span>

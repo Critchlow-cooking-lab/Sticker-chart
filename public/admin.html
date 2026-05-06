@@ -89,6 +89,35 @@
     transition: opacity 0.3s;
   }
   .saved.show { opacity: 1; }
+  .image-preview {
+    width: 80px;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 2px solid rgba(255,215,0,0.3);
+    margin-bottom: 0.5rem;
+    display: block;
+  }
+  .image-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.8rem;
+  }
+  input[type="file"] {
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.85rem;
+    color: #aaa;
+  }
+  .remove-btn {
+    background: rgba(255,255,255,0.1);
+    color: #e57373;
+    font-size: 0.8rem;
+    padding: 0.3rem 0.8rem;
+    cursor: pointer;
+    border: 1px solid rgba(229,115,115,0.3);
+  }
+  .remove-btn:hover { background: rgba(229,115,115,0.15); }
   .back-link {
     display: inline-block;
     margin-top: 1.5rem;
@@ -119,11 +148,20 @@ async function load() {
   for (const [kidId, kid] of Object.entries(state)) {
     const section = document.createElement('div');
     section.className = `kid-section ${kidId}`;
+    const hasImage = kid.wishImage ? true : false;
     section.innerHTML = `
       <h2>${kid.name}</h2>
       <div class="kid-stats">${kid.totalStars} total stars &middot; ${kid.starsTowardNext}/${kid.rewardTarget} to next reward</div>
       <label for="wish-${kidId}">Working toward</label>
       <input type="text" id="wish-${kidId}" value="${kid.wish || ''}" placeholder="e.g. Trip to the movies, new Lego set..." maxlength="200">
+      <label>Reward photo</label>
+      <div class="image-row">
+        ${hasImage ? `<img class="image-preview" id="preview-${kidId}" src="${kid.wishImage}">` : `<img class="image-preview" id="preview-${kidId}" style="display:none">`}
+        <div>
+          <input type="file" id="file-${kidId}" accept="image/*" onchange="previewImage('${kidId}', this)">
+          ${hasImage ? `<button class="remove-btn" onclick="removeImage('${kidId}')">Remove</button>` : ''}
+        </div>
+      </div>
       <button onclick="saveWish('${kidId}')">Save</button>
       <span class="saved" id="saved-${kidId}">Saved!</span>
     `;
@@ -131,16 +169,59 @@ async function load() {
   }
 }
 
+// Store pending image data per kid
+let pendingImages = {};
+
+function previewImage(kidId, input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    // Resize to max 200px to keep data.json small
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const max = 200;
+      let w = img.width, h = img.height;
+      if (w > h) { h = h * max / w; w = max; }
+      else { w = w * max / h; h = max; }
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      pendingImages[kidId] = dataUrl;
+      const preview = document.getElementById('preview-' + kidId);
+      preview.src = dataUrl;
+      preview.style.display = 'block';
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeImage(kidId) {
+  pendingImages[kidId] = '';
+  const preview = document.getElementById('preview-' + kidId);
+  preview.style.display = 'none';
+  preview.src = '';
+}
+
 async function saveWish(kidId) {
   const wish = document.getElementById('wish-' + kidId).value;
+  const body = { wish };
+  if (pendingImages[kidId] !== undefined) {
+    body.wishImage = pendingImages[kidId];
+    delete pendingImages[kidId];
+  }
   await fetch('/api/wish/' + kidId, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ wish }),
+    body: JSON.stringify(body),
   });
   const badge = document.getElementById('saved-' + kidId);
   badge.classList.add('show');
   setTimeout(() => badge.classList.remove('show'), 2000);
+  load(); // Refresh to show remove button
 }
 
 load();
