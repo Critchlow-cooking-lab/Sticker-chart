@@ -54,6 +54,14 @@
   .elodie .kid-name { color: #f8a5c2; }
   .samuel .kid-name { color: #7ec8e3; }
 
+  .kid-wish {
+    font-size: 1rem;
+    color: #ccc;
+    margin-bottom: 0.4rem;
+    font-weight: 700;
+    font-style: italic;
+  }
+
   .star-summary {
     font-size: 1.1rem;
     color: #aaa;
@@ -275,6 +283,10 @@ let state = {};
 let previousStars = {};
 let rewardDismissable = false;
 
+// Cursor tracks which task is highlighted per kid
+let cursor = {};
+const LONG_PRESS_MS = 1000;
+
 // ============================================================
 // WEBSOCKET CONNECTION
 // ============================================================
@@ -287,6 +299,12 @@ function connectWS() {
     if (msg.type === 'state') {
       const oldState = state;
       state = msg.data;
+      // Init cursors to first undone task
+      for (const kidId of Object.keys(state)) {
+        if (cursor[kidId] === undefined) {
+          cursor[kidId] = firstUndoneIndex(kidId);
+        }
+      }
       render(oldState);
     }
   };
@@ -297,10 +315,35 @@ function connectWS() {
 }
 connectWS();
 
+function firstUndoneIndex(kidId) {
+  const tasks = state[kidId]?.tasks || [];
+  const idx = tasks.findIndex(t => !t.done);
+  return idx === -1 ? 0 : idx;
+}
+
+function nextIndex(kidId, fromIdx) {
+  const tasks = state[kidId]?.tasks || [];
+  return (fromIdx + 1) % tasks.length;
+}
+
+function nextUndoneIndex(kidId, fromIdx) {
+  const tasks = state[kidId]?.tasks || [];
+  const len = tasks.length;
+  for (let i = 1; i <= len; i++) {
+    const idx = (fromIdx + i) % len;
+    if (!tasks[idx].done) return idx;
+  }
+  return (fromIdx + 1) % len;
+}
+
 // ============================================================
-// KEYBOARD INPUT
+// KEYBOARD INPUT — short press cycles, long press marks done
 // ============================================================
+let keyTimers = {};
+
 document.addEventListener('keydown', (e) => {
+  if (e.repeat) return;
+
   // Dismiss reward overlay
   if (document.getElementById('rewardOverlay').classList.contains('visible')) {
     if (rewardDismissable) {
@@ -310,26 +353,73 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  // Map keys to kids
   for (const kidId of Object.keys(state)) {
     if (state[kidId].key === e.key) {
-      pressButton(kidId);
+      keyTimers[kidId] = {
+        start: Date.now(),
+        fired: false,
+        timeout: setTimeout(() => {
+          keyTimers[kidId].fired = true;
+          const task = state[kidId]?.tasks[cursor[kidId]];
+          if (task && task.done) {
+            undoTask(kidId, cursor[kidId]);
+          } else {
+            markTaskDone(kidId, cursor[kidId]);
+          }
+        }, LONG_PRESS_MS),
+      };
       return;
     }
   }
 });
 
-async function pressButton(kidId) {
+document.addEventListener('keyup', (e) => {
+  for (const kidId of Object.keys(state)) {
+    if (state[kidId].key === e.key && keyTimers[kidId]) {
+      clearTimeout(keyTimers[kidId].timeout);
+      if (!keyTimers[kidId].fired) {
+        // Short press — cycle to next task
+        cursor[kidId] = nextIndex(kidId, cursor[kidId]);
+        render(state); // re-render to move highlight
+      }
+      delete keyTimers[kidId];
+      return;
+    }
+  }
+});
+
+async function undoTask(kidId, taskIndex) {
   try {
-    const res = await fetch(`/api/button/${kidId}`, { method: 'POST' });
+    const res = await fetch(`/api/undo/${kidId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskIndex }),
+    });
     const data = await res.json();
     if (data.success) {
-      // Star burst animation at the completed task
+      cursor[kidId] = taskIndex;
+    }
+  } catch (err) {
+    console.error('Undo failed:', err);
+  }
+}
+
+async function markTaskDone(kidId, taskIndex) {
+  try {
+    const res = await fetch(`/api/button/${kidId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskIndex }),
+    });
+    const data = await res.json();
+    if (data.success) {
       const panel = document.querySelector(`.kid-panel.${kidId}`);
-      const currentTask = panel?.querySelector('.task-item.current');
-      if (currentTask) {
-        createStarBurst(currentTask);
+      const items = panel?.querySelectorAll('.task-item');
+      if (items && items[taskIndex]) {
+        createStarBurst(items[taskIndex]);
       }
+      // Move cursor to next undone task
+      cursor[kidId] = nextUndoneIndex(kidId, taskIndex);
     }
   } catch (err) {
     console.error('Button press failed:', err);
@@ -350,7 +440,7 @@ function render(oldState) {
     panel.className = `kid-panel ${kidId}`;
 
     const allDone = kid.tasks.every(t => t.done);
-    const firstUndone = kid.tasks.findIndex(t => !t.done);
+    const cursorIdx = cursor[kidId] !== undefined ? cursor[kidId] : firstUndoneIndex(kidId);
     const progressPct = Math.min(100, (kid.starsTowardNext / kid.rewardTarget) * 100);
 
     let tasksHTML = '';
@@ -358,7 +448,7 @@ function render(oldState) {
       const classes = [
         'task-item',
         t.done ? 'done' : '',
-        (!t.done && i === firstUndone) ? 'current' : '',
+        (!t.done && i === cursorIdx) ? 'current' : '',
       ].filter(Boolean).join(' ');
 
       const icon = t.done ? '<span style="color:#ffd700">&#9733;</span>' : '';
@@ -372,6 +462,7 @@ function render(oldState) {
     panel.innerHTML = `
       <div class="kid-header">
         <div class="kid-name">${kid.name}</div>
+        ${kid.wish ? `<div class="kid-wish">Working toward: ${kid.wish}</div>` : ''}
         <div class="star-summary">
           <span style="color:#ffd700">&#9733;</span>
           ${kid.starsTowardNext} / ${kid.rewardTarget} stars to next reward
@@ -386,7 +477,7 @@ function render(oldState) {
         &#9733; All done tonight! Great job ${kid.name}! &#9733;
       </div>
       <div class="key-hint">
-        Press <span class="key-badge">${kid.key}</span> to complete next task
+        <span class="key-badge">${kid.key}</span> tap to cycle &middot; hold to mark done or undo
       </div>
     `;
 
@@ -431,6 +522,18 @@ function createStarBurst(element) {
   document.body.appendChild(container);
   setTimeout(() => container.remove(), 1200);
 }
+
+// ============================================================
+// AUTO-REFRESH AT MIDNIGHT
+// ============================================================
+let currentDate = new Date().toDateString();
+setInterval(() => {
+  const now = new Date().toDateString();
+  if (now !== currentDate) {
+    currentDate = now;
+    location.reload();
+  }
+}, 2 * 60 * 60 * 1000);
 
 // ============================================================
 // REWARD CELEBRATION

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bedtime Tracker — Admin</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Nunito', sans-serif;
+    background: #1a1a2e;
+    color: #eee;
+    padding: 2rem;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 1.8rem;
+    font-weight: 900;
+    margin-bottom: 0.5rem;
+    color: #ffd700;
+  }
+  p.subtitle {
+    color: #888;
+    margin-bottom: 2rem;
+    font-size: 0.95rem;
+  }
+  .kid-section {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .kid-section h2 {
+    font-size: 1.4rem;
+    font-weight: 900;
+    margin-bottom: 0.3rem;
+  }
+  .kid-section.elodie h2 { color: #f8a5c2; }
+  .kid-section.samuel h2 { color: #7ec8e3; }
+  .kid-stats {
+    color: #aaa;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+  }
+  label {
+    display: block;
+    font-size: 0.85rem;
+    color: #999;
+    margin-bottom: 0.3rem;
+    font-weight: 700;
+  }
+  input[type="text"] {
+    width: 100%;
+    padding: 0.7rem 1rem;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.06);
+    color: #eee;
+    font-family: 'Nunito', sans-serif;
+    font-size: 1rem;
+    outline: none;
+    margin-bottom: 0.8rem;
+  }
+  input[type="text"]:focus {
+    border-color: rgba(255,215,0,0.4);
+  }
+  button {
+    padding: 0.6rem 1.5rem;
+    border-radius: 8px;
+    border: none;
+    background: #ffd700;
+    color: #1a1a2e;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  button:hover { background: #ffed4a; }
+  .saved {
+    display: inline-block;
+    margin-left: 0.8rem;
+    color: #4caf50;
+    font-weight: 700;
+    font-size: 0.9rem;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .saved.show { opacity: 1; }
+  .back-link {
+    display: inline-block;
+    margin-top: 1.5rem;
+    color: #888;
+    font-size: 0.9rem;
+    text-decoration: none;
+  }
+  .back-link:hover { color: #ccc; }
+</style>
+</head>
+<body>
+
+<h1>Admin</h1>
+<p class="subtitle">Set what each kid is working toward. This shows on their side of the tracker.</p>
+
+<div id="sections"></div>
+
+<a href="/" class="back-link">Back to tracker</a>
+
+<script>
+async function load() {
+  const res = await fetch('/api/state');
+  const state = await res.json();
+
+  const container = document.getElementById('sections');
+  container.innerHTML = '';
+
+  for (const [kidId, kid] of Object.entries(state)) {
+    const section = document.createElement('div');
+    section.className = `kid-section ${kidId}`;
+    section.innerHTML = `
+      <h2>${kid.name}</h2>
+      <div class="kid-stats">${kid.totalStars} total stars &middot; ${kid.starsTowardNext}/${kid.rewardTarget} to next reward</div>
+      <label for="wish-${kidId}">Working toward</label>
+      <input type="text" id="wish-${kidId}" value="${kid.wish || ''}" placeholder="e.g. Trip to the movies, new Lego set..." maxlength="200">
+      <button onclick="saveWish('${kidId}')">Save</button>
+      <span class="saved" id="saved-${kidId}">Saved!</span>
+    `;
+    container.appendChild(section);
+  }
+}
+
+async function saveWish(kidId) {
+  const wish = document.getElementById('wish-' + kidId).value;
+  await fetch('/api/wish/' + kidId, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ wish }),
+  });
+  const badge = document.getElementById('saved-' + kidId);
+  badge.classList.add('show');
+  setTimeout(() => badge.classList.remove('show'), 2000);
+}
+
+load();
+</script>
+</body>
+</html>

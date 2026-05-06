@@ -21,7 +21,7 @@ const dayOverrides = {
 };
 
 const rewardTarget = 50;
-const resetHour = 16;
+const resetHour = 0;
 
 function getTasksForToday() {
   const day = new Date().getDay();
