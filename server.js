@@ -7,6 +7,21 @@ const { kids, taskLibrary, rewardTarget, resetHour, getTasksForToday } = require
 
 const DB_PATH = path.join(__dirname, 'data.json');
 
+// Server-side cursor tracking (in memory, resets on server restart)
+let cursors = {};
+
+function getCursor(kidId) {
+  if (cursors[kidId] === undefined) {
+    const data = loadData();
+    ensureKidData(data);
+    ensureTonightTasks(data);
+    const tasks = (data.tonight && data.tonight.kids[kidId]) || [];
+    const idx = tasks.findIndex(t => !t.done);
+    cursors[kidId] = idx === -1 ? 0 : idx;
+  }
+  return cursors[kidId];
+}
+
 function loadData() {
   try {
     return JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
@@ -69,6 +84,7 @@ function getState() {
       wish: data.wishes[kid.id] || '',
       wishImage: (data.wishImages && data.wishImages[kid.id]) || '',
       tasks: data.tonight.kids[kid.id],
+      cursor: getCursor(kid.id),
     };
   }
   return state;
@@ -81,9 +97,20 @@ function pressButton(kidId, taskIndex) {
   const kid = kids.find(k => k.id === kidId);
   if (!kid) return { error: 'Unknown kid' };
   const kidTasks = data.tonight.kids[kidId];
-  const idx = (taskIndex !== undefined) ? taskIndex : kidTasks.findIndex(t => !t.done);
+  // Use provided taskIndex, or fall back to server cursor
+  const idx = (taskIndex !== undefined) ? taskIndex : getCursor(kidId);
   if (idx === -1 || idx >= kidTasks.length) return { error: 'All done for tonight!', allDone: true };
-  if (kidTasks[idx].done) return { error: 'Already done', alreadyDone: true };
+  // If the highlighted task is already done, undo it
+  if (kidTasks[idx].done) {
+    kidTasks[idx].done = false;
+    kidTasks[idx].doneAt = null;
+    if (data.stars[kidId] > 0) data.stars[kidId]--;
+    const correctRewards = Math.floor(data.stars[kidId] / rewardTarget);
+    data.rewards[kidId] = correctRewards;
+    saveData(data);
+    cursors[kidId] = idx;
+    return { success: true, task: kidTasks[idx].task, undone: true };
+  }
   kidTasks[idx].done = true;
   kidTasks[idx].doneAt = new Date().toISOString();
   data.stars[kidId]++;
@@ -94,7 +121,28 @@ function pressButton(kidId, taskIndex) {
     rewardEarned = true;
   }
   saveData(data);
+  // Move cursor to next undone task
+  const len = kidTasks.length;
+  let nextIdx = -1;
+  for (let i = 1; i <= len; i++) {
+    const candidate = (idx + i) % len;
+    if (!kidTasks[candidate].done) { nextIdx = candidate; break; }
+  }
+  cursors[kidId] = nextIdx === -1 ? idx : nextIdx;
   return { success: true, task: kidTasks[idx].task, rewardEarned };
+}
+
+function cycleTask(kidId) {
+  const kid = kids.find(k => k.id === kidId);
+  if (!kid) return { error: 'Unknown kid' };
+  let data = loadData();
+  data = ensureKidData(data);
+  data = ensureTonightTasks(data);
+  const kidTasks = data.tonight.kids[kidId];
+  const current = getCursor(kidId);
+  const next = (current + 1) % kidTasks.length;
+  cursors[kidId] = next;
+  return { success: true, cursor: next };
 }
 
 const app = express();
@@ -112,6 +160,11 @@ function broadcast() {
 app.use(express.static(path.join(__dirname, 'public')));
 app.get('/api/state', (req, res) => res.json(getState()));
 app.use(express.json({ limit: '5mb' }));
+app.post('/api/cycle/:kidId', (req, res) => {
+  const result = cycleTask(req.params.kidId);
+  res.json(result);
+  broadcast();
+});
 app.post('/api/button/:kidId', (req, res) => {
   const taskIndex = (req.body && req.body.taskIndex !== undefined) ? req.body.taskIndex : undefined;
   const result = pressButton(req.params.kidId, taskIndex);
@@ -157,6 +210,7 @@ app.post('/api/reset', (req, res) => {
   data.tonight = null;
   saveData(data);
   ensureTonightTasks(loadData());
+  cursors = {}; // Reset cursors for new session
   res.json({ ok: true });
   broadcast();
 });
