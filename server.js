@@ -133,7 +133,7 @@ function getState() {
     const totalRewards = data.rewards[kid.id];
     const starsTowardNext = totalStars - (totalRewards * config.rewardTarget);
     state[kid.id] = {
-      name: kid.name, key: kid.key, totalStars, starsTowardNext,
+      name: kid.name, key: kid.key, color: kid.color || '', totalStars, starsTowardNext,
       rewardTarget: config.rewardTarget, rewardCount: totalRewards,
       wish: data.wishes[kid.id] || '',
       wishImage: (data.wishImages && data.wishImages[kid.id]) || '',
