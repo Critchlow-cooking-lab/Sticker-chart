@@ -185,9 +185,25 @@ function render() {
         <button class="btn-small btn-secondary" onclick="adjustStars('${kid.id}', ${(ks.totalStars||0) + 1})">+</button>
         <button class="btn-small btn-danger" onclick="if(confirm('Reset stars to 0?'))adjustStars('${kid.id}',0)">Reset</button>
       </div>
+      <label style="margin-top:0.8rem">Tasks for ${kid.name}</label>
+      <p style="color:#666;font-size:0.8rem;margin-bottom:0.4rem">Leave all unchecked to use default tasks</p>
+      <div class="checkbox-grid" id="kid-tasks-${kid.id}"></div>
       <div style="margin-top:0.8rem"><button class="btn-small btn-danger" onclick="removeKid(${i})">Remove ${kid.name}</button></div>
     `;
     app.appendChild(div);
+
+    // Populate per-kid task checkboxes
+    const kidTaskGrid = document.getElementById('kid-tasks-' + kid.id);
+    if (kidTaskGrid) {
+      const kidTaskList = (config.kidTasks && config.kidTasks[kid.id]) || [];
+      Object.keys(config.taskLibrary).forEach(taskName => {
+        const checked = kidTaskList.includes(taskName);
+        const safeName = taskName.replace(/'/g, "\\'");
+        const lab = document.createElement('label');
+        lab.innerHTML = `<input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleKidTask('${kid.id}', '${safeName}', this.checked)"> ${config.taskLibrary[taskName].icon || ''} ${taskName}`;
+        kidTaskGrid.appendChild(lab);
+      });
+    }
   });
 
   const addKidBtn = document.createElement('button');
@@ -430,6 +446,21 @@ function toggleDayOverride(dayNum, checked) {
     config.dayOverrides[dayNum] = [...config.defaultTasks];
   } else {
     delete config.dayOverrides[dayNum];
+  }
+  saveConfig();
+}
+
+function toggleKidTask(kidId, taskName, checked) {
+  if (!config.kidTasks) config.kidTasks = {};
+  if (!config.kidTasks[kidId]) config.kidTasks[kidId] = [];
+  if (checked && !config.kidTasks[kidId].includes(taskName)) {
+    config.kidTasks[kidId].push(taskName);
+  } else if (!checked) {
+    config.kidTasks[kidId] = config.kidTasks[kidId].filter(t => t !== taskName);
+  }
+  // If array is empty, remove the key so it falls back to defaults
+  if (config.kidTasks[kidId].length === 0) {
+    delete config.kidTasks[kidId];
   }
   saveConfig();
 }

@@ -179,11 +179,27 @@
 
   /* Current task highlight */
   .task-item.current {
-    border-color: rgba(255,215,0,0.4);
-    background: rgba(255,215,0,0.06);
+    border-color: rgba(255,215,0,0.7);
+    border-width: 2px;
+    background: rgba(255,215,0,0.12);
+    box-shadow: 0 0 20px rgba(255,215,0,0.3), inset 0 0 20px rgba(255,215,0,0.05);
+    animation: glowPulse 2s ease-in-out infinite;
   }
-  .elodie .task-item.current { border-color: rgba(248,165,194,0.4); background: rgba(248,165,194,0.06); }
-  .samuel .task-item.current { border-color: rgba(126,200,227,0.4); background: rgba(126,200,227,0.06); }
+  .elodie .task-item.current {
+    border-color: rgba(248,165,194,0.8);
+    background: rgba(248,165,194,0.15);
+    box-shadow: 0 0 20px rgba(248,165,194,0.4), inset 0 0 20px rgba(248,165,194,0.05);
+  }
+  .samuel .task-item.current {
+    border-color: rgba(126,200,227,0.8);
+    background: rgba(126,200,227,0.15);
+    box-shadow: 0 0 20px rgba(126,200,227,0.4), inset 0 0 20px rgba(126,200,227,0.05);
+  }
+
+  @keyframes glowPulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(255,215,0,0.3), inset 0 0 20px rgba(255,215,0,0.05); }
+    50% { box-shadow: 0 0 35px rgba(255,215,0,0.5), inset 0 0 30px rgba(255,215,0,0.08); }
+  }
 
   /* Key hint */
   .key-hint {
@@ -234,6 +250,54 @@
   @keyframes starFly {
     0% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
     100% { transform: translate(var(--tx), var(--ty)) scale(0) rotate(360deg); opacity: 0; }
+  }
+
+  /* Big star celebration */
+  .big-star-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    z-index: 1500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .big-star {
+    font-size: 0;
+    color: #ffd700;
+    text-shadow: 0 0 60px rgba(255,215,0,0.8), 0 0 120px rgba(255,215,0,0.4);
+    animation: bigStarPop 1.2s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    filter: drop-shadow(0 0 40px rgba(255,215,0,0.6));
+  }
+
+  @keyframes bigStarPop {
+    0% { font-size: 0; opacity: 0; transform: rotate(-20deg) scale(0); }
+    30% { font-size: 14rem; opacity: 1; transform: rotate(10deg) scale(1.1); }
+    50% { font-size: 12rem; opacity: 1; transform: rotate(0deg) scale(1); }
+    70% { font-size: 12rem; opacity: 1; transform: rotate(0deg) scale(1); }
+    100% { font-size: 12rem; opacity: 0; transform: rotate(15deg) scale(1.3); }
+  }
+
+  /* Sparkle particles that fly out from center */
+  .sparkle-particle {
+    position: absolute;
+    font-size: 2rem;
+    animation: sparkleFly 1s ease-out forwards;
+    pointer-events: none;
+  }
+  @keyframes sparkleFly {
+    0% { transform: translate(0, 0) scale(0.5); opacity: 1; }
+    100% { transform: translate(var(--tx), var(--ty)) scale(0); opacity: 0; }
+  }
+
+  /* Flash the completed task row gold */
+  .task-item.flash-gold {
+    animation: taskFlash 0.8s ease-out;
+  }
+  @keyframes taskFlash {
+    0% { background: rgba(255, 215, 0, 0.5); box-shadow: 0 0 30px rgba(255,215,0,0.4); }
+    100% { background: rgba(255, 215, 0, 0.08); box-shadow: none; }
   }
 
   /* Reward celebration overlay */
@@ -476,33 +540,49 @@ function render(oldState) {
 // STAR BURST ANIMATION
 // ============================================================
 function createStarBurst(element) {
+  // Flash the task row gold
+  element.classList.add('flash-gold');
+  setTimeout(() => element.classList.remove('flash-gold'), 800);
+
+  // Determine which half of the screen this kid is on
   const rect = element.getBoundingClientRect();
-  const cx = rect.left + rect.width / 2;
-  const cy = rect.top + rect.height / 2;
+  const panelRect = element.closest('.kid-panel').getBoundingClientRect();
 
-  const container = document.createElement('div');
-  container.className = 'star-burst';
-  container.style.left = cx + 'px';
-  container.style.top = cy + 'px';
+  // Big star overlay centered on this kid's panel
+  const overlay = document.createElement('div');
+  overlay.className = 'big-star-overlay';
+  overlay.style.left = panelRect.left + 'px';
+  overlay.style.width = panelRect.width + 'px';
 
-  const particles = 8;
-  for (let i = 0; i < particles; i++) {
-    const angle = (i / particles) * Math.PI * 2;
-    const distance = 60 + Math.random() * 40;
+  const star = document.createElement('div');
+  star.className = 'big-star';
+  star.innerHTML = '★';
+  overlay.appendChild(star);
+
+  // Add sparkle particles around the star
+  const sparkleCount = 16;
+  const colors = ['#ffd700', '#ffed4a', '#fff', '#ffa500', '#ffe066'];
+  const symbols = ['★', '✦', '✧', '⭐', '✨'];
+  for (let i = 0; i < sparkleCount; i++) {
+    const angle = (i / sparkleCount) * Math.PI * 2;
+    const distance = 120 + Math.random() * 100;
     const tx = Math.cos(angle) * distance;
     const ty = Math.sin(angle) * distance;
 
-    const star = document.createElement('div');
-    star.className = 'star-particle';
-    star.innerHTML = '&#9733;';
-    star.style.color = '#ffd700';
-    star.style.setProperty('--tx', tx + 'px');
-    star.style.setProperty('--ty', ty + 'px');
-    container.appendChild(star);
+    const sparkle = document.createElement('div');
+    sparkle.className = 'sparkle-particle';
+    sparkle.innerHTML = symbols[Math.floor(Math.random() * symbols.length)];
+    sparkle.style.color = colors[Math.floor(Math.random() * colors.length)];
+    sparkle.style.setProperty('--tx', tx + 'px');
+    sparkle.style.setProperty('--ty', ty + 'px');
+    sparkle.style.animationDelay = (Math.random() * 0.3) + 's';
+    sparkle.style.left = '50%';
+    sparkle.style.top = '50%';
+    overlay.appendChild(sparkle);
   }
 
-  document.body.appendChild(container);
-  setTimeout(() => container.remove(), 1200);
+  document.body.appendChild(overlay);
+  setTimeout(() => overlay.remove(), 1500);
 }
 
 // ============================================================

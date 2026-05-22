@@ -21,6 +21,7 @@ const DEFAULT_CONFIG = {
   dayOverrides: {
     5: ['Brush teeth', 'Get into PJs', 'Make bed', 'Pack toys away'],
   },
+  kidTasks: {},
   rewardTarget: 50,
   resetHour: 0,
 };
@@ -50,14 +51,24 @@ function getConfig(data) {
     taskLibrary: data.config?.taskLibrary || DEFAULT_CONFIG.taskLibrary,
     defaultTasks: data.config?.defaultTasks || DEFAULT_CONFIG.defaultTasks,
     dayOverrides: data.config?.dayOverrides || DEFAULT_CONFIG.dayOverrides,
+    kidTasks: data.config?.kidTasks || DEFAULT_CONFIG.kidTasks,
     rewardTarget: data.config?.rewardTarget ?? DEFAULT_CONFIG.rewardTarget,
     resetHour: data.config?.resetHour ?? DEFAULT_CONFIG.resetHour,
   };
 }
 
-function getTasksForToday(config) {
+function getTasksForKid(config, kidId) {
+  // Per-kid override takes priority
+  if (config.kidTasks[kidId] && config.kidTasks[kidId].length > 0) {
+    return config.kidTasks[kidId];
+  }
+  // Then day-of-week override
   const day = new Date().getDay();
-  return config.dayOverrides[day] || config.defaultTasks;
+  if (config.dayOverrides[day]) {
+    return config.dayOverrides[day];
+  }
+  // Then defaults
+  return config.defaultTasks;
 }
 
 function getCursor(kidId) {
@@ -86,9 +97,9 @@ function getSessionDate(config) {
 function ensureTonightTasks(data, config) {
   const sessionDate = getSessionDate(config);
   if (!data.tonight || data.tonight.sessionDate !== sessionDate) {
-    const tasks = getTasksForToday(config);
     data.tonight = { sessionDate, kids: {} };
     for (const kid of config.kids) {
+      const tasks = getTasksForKid(config, kid.id);
       data.tonight.kids[kid.id] = tasks.map(t => ({
         task: t, icon: (config.taskLibrary[t] && config.taskLibrary[t].icon) || '', done: false, doneAt: null,
       }));
@@ -247,6 +258,7 @@ app.post('/api/config', (req, res) => {
     taskLibrary: newConfig.taskLibrary || {},
     defaultTasks: newConfig.defaultTasks,
     dayOverrides: newConfig.dayOverrides || {},
+    kidTasks: newConfig.kidTasks || {},
     rewardTarget: parseInt(newConfig.rewardTarget) || 50,
     resetHour: parseInt(newConfig.resetHour) ?? 0,
   };
@@ -344,6 +356,6 @@ server.listen(PORT, '0.0.0.0', () => {
   const config = getConfig();
   console.log('Bedtime Tracker running at http://localhost:' + PORT);
   console.log('Kids: ' + config.kids.map(k => k.name + ' (key: ' + k.key + ')').join(', '));
-  console.log('Tasks: ' + getTasksForToday(config).join(', '));
+  console.log('Tasks: per-kid or default = ' + config.defaultTasks.join(', '));
   console.log('Reward target: ' + config.rewardTarget + ' stars');
 });
