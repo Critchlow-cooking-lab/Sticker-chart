@@ -302,6 +302,8 @@ function render() {
   settingsDiv.innerHTML = `
     <label>Stars needed for a reward</label>
     <input type="number" value="${config.rewardTarget}" min="1" max="999" onchange="config.rewardTarget=parseInt(this.value);saveConfig()">
+    <label>Reset hour (tasks refresh after this hour, 0 = midnight)</label>
+    <input type="number" value="${config.resetHour || 0}" min="0" max="23" onchange="config.resetHour=parseInt(this.value);saveConfig()">
   `;
   app.appendChild(settingsDiv);
 
